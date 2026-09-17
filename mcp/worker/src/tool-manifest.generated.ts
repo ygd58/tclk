@@ -794,25 +794,33 @@ export const TOOLS: readonly ManifestTool[] = [
   },
   {
     "name": "tclk_read_verified_transcript",
-    "description": "Read a room and fold it in one call — the authenticated default for \"what is this contract's state\". Runs tclk_read_room then foldTranscript internally: a forged `from` field, a bad signature, or a wrong room is rejected exactly as it is for tclk_apply_transcript and never advances `state`. Prefer this over reading tclk_read_room output directly for any decision that affects lock/receipt/refund handling — raw records are unauthenticated. `state` is `null` when no authenticated offer has folded yet; that is a normal outcome here, not a failure.",
+    "description": "Read one contract's state, authenticated end to end — the safe default for \"what is this contract's state\". A real contract spans two rooms: offer/accept authenticate only in OFFER_ROOM, and lock/reveal/refund/receipt/heartbeat only in the deal room derived from `contract`. This fetches both, locates the authenticated handshake via findContractHandshake, and folds everything together: a forged `from` field, a bad signature, or a frame in the wrong room is rejected exactly as it is for tclk_apply_transcript, including a forged terminal frame sitting in the deal room itself. `state` is `null` when no authenticated handshake for `contract` was found in the window read; widen `offersFull` for a byte-exact archive read if so.",
     "inputSchema": {
       "type": "object",
       "properties": {
-        "room": {
+        "contract": {
           "type": "string",
-          "description": "A technocore room name, /^[a-z0-9][a-z0-9_-]{0,47}$/."
+          "description": "The 0x-prefixed 32-byte contract id."
+        },
+        "offersSince": {
+          "type": "integer",
+          "description": "The last OFFER_ROOM seq you saw; window reads only."
+        },
+        "offersFull": {
+          "type": "boolean",
+          "description": "Read OFFER_ROOM's retained JSONL export instead of the tail window."
         },
         "since": {
           "type": "integer",
-          "description": "The last seq you saw; window reads only."
+          "description": "The last deal-room seq you saw; window reads only."
         },
         "full": {
           "type": "boolean",
-          "description": "Read the retained JSONL export instead of the tail window."
+          "description": "Read the deal room's retained JSONL export instead of the tail window."
         }
       },
       "required": [
-        "room"
+        "contract"
       ],
       "additionalProperties": false,
       "$schema": "http://json-schema.org/draft-07/schema#"

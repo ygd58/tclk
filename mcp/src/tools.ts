@@ -16,6 +16,7 @@ import {
   decodeFrame,
   dealRoom,
   encodeFrame,
+  findContractHandshake,
   foldTranscript,
   generateHashLock,
   generatePointLock,
@@ -23,6 +24,7 @@ import {
   makeHeartbeat,
   makeOffer,
   normalizeRailId,
+  OFFER_ROOM,
   schnorrAdaptor,
   stateNote,
   transcriptRecord,
@@ -473,30 +475,56 @@ export function createHandlers(options: HandlerOptions = {}) {
     },
 
     /**
-     * Read a room and fold it in one call: the safe default for \"what is this
-     * contract\u2019s state\", so the easy path is also the authenticated one. Wires
-     * together two already-tested primitives (`tclk_read_room` + `foldTranscript`)
-     * without touching either \u2014 a forged `from` field, a bad signature, or a wrong
-     * room is rejected by `foldTranscript` exactly as it is for `tclk_apply_transcript`,
-     * and never advances `state`.
+     * Read one contract's state, authenticated end to end. A real contract's frames
+     * split across two rooms -- offer/accept only authenticate in OFFER_ROOM, and
+     * lock/reveal/refund/receipt/heartbeat only authenticate in the deal room derived
+     * from the contract id -- so this fetches both, locates the authenticated
+     * handshake for `contract` in OFFER_ROOM via findContractHandshake, and folds it
+     * together with the deal room's own records in one call. A forged `from` field, a
+     * bad signature, or a frame posted in the wrong room is rejected by
+     * `foldTranscript` exactly as it is for `tclk_apply_transcript`, and never
+     * advances `state` -- including a forged terminal frame (lock/reveal/refund/
+     * receipt) sitting in the deal room itself, which a single-room read could never
+     * see authenticated context for.
      *
-     * `state` is `null` when no authenticated offer has been folded yet (an empty or
-     * very new room, or one whose only offer-shaped frames were all rejected). That is
-     * a normal read outcome here, not a failure: unlike `tclk_apply_transcript`, which
-     * a caller invokes expecting a contract to already exist, this tool answers \"what,
-     * if anything, has this room authenticated so far\" \u2014 so it reports `state: null`
-     * plus the rejected `steps` rather than throwing.
+     * `state` is `null` when no authenticated handshake for `contract` was found in
+     * OFFER_ROOM (wrong contract id, or the offer/accept have rotated out of the
+     * window read -- widen `offersFull` for a byte-exact archive read if so). That is
+     * a normal read outcome here, not a failure: this tool answers "what, if
+     * anything, has actually been authenticated for this contract so far", not an
+     * assertion that one already exists.
      */
-    async tclk_read_verified_transcript(input: { room: string; since?: number; full?: boolean }) {
-      const read = await this.tclk_read_room(input);
-      const folded = foldTranscript(read.records);
+    async tclk_read_verified_transcript(input: {
+      contract: string;
+      offersSince?: number;
+      offersFull?: boolean;
+      since?: number;
+      full?: boolean;
+    }) {
+      const deal = dealRoom(input.contract);
+      const offers = await this.tclk_read_room({
+        room: OFFER_ROOM,
+        since: input.offersSince,
+        full: input.offersFull,
+      });
+      const handshake = findContractHandshake(offers.records, input.contract);
+      const dealRead = await this.tclk_read_room({ room: deal, since: input.since, full: input.full });
+
+      const records =
+        handshake === null ? dealRead.records : [handshake.offer, handshake.accept, ...dealRead.records];
+      const folded = foldTranscript(records);
       const open = folded.state;
+      const offersMalformed = offers.malformed ?? [];
+      const dealMalformed = dealRead.malformed ?? [];
       return {
-        room: read.room,
-        source: read.source,
-        count: read.count,
-        lastSeq: read.lastSeq,
-        malformed: "malformed" in read ? read.malformed : [],
+        contract: input.contract,
+        offerRoom: OFFER_ROOM,
+        dealRoom: deal,
+        handshakeFound: handshake !== null,
+        count: offers.count + dealRead.count,
+        offersLastSeq: offers.lastSeq,
+        dealLastSeq: dealRead.lastSeq,
+        malformed: [...offersMalformed, ...dealMalformed],
         state:
           open === null
             ? null

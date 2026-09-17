@@ -367,18 +367,29 @@ export function createServer(options: HandlerOptions = {}): McpServer {
     "tclk_read_verified_transcript",
     {
       description:
-        "Read a room and fold it in one call \u2014 the authenticated default for \"what is " +
-        "this contract's state\". Runs tclk_read_room then foldTranscript internally: a " +
-        "forged `from` field, a bad signature, or a wrong room is rejected exactly as it " +
-        "is for tclk_apply_transcript and never advances `state`. Prefer this over reading " +
-        "tclk_read_room output directly for any decision that affects lock/receipt/refund " +
-        "handling \u2014 raw records are unauthenticated. `state` is `null` when no " +
-        "authenticated offer has folded yet; that is a normal outcome here, not a failure.",
+        "Read one contract's state, authenticated end to end \u2014 the safe default for " +
+        "\"what is this contract's state\". A real contract spans two rooms: offer/accept " +
+        "authenticate only in OFFER_ROOM, and lock/reveal/refund/receipt/heartbeat only in " +
+        "the deal room derived from `contract`. This fetches both, locates the authenticated " +
+        "handshake via findContractHandshake, and folds everything together: a forged `from` " +
+        "field, a bad signature, or a frame in the wrong room is rejected exactly as it is " +
+        "for tclk_apply_transcript, including a forged terminal frame sitting in the deal " +
+        "room itself. `state` is `null` when no authenticated handshake for `contract` was " +
+        "found in the window read; widen `offersFull` for a byte-exact archive read if so.",
       annotations: NETWORK_READS,
       inputSchema: {
-        room,
-        since: z.number().int().optional().describe("The last seq you saw; window reads only."),
-        full: z.boolean().optional().describe("Read the retained JSONL export instead of the tail window."),
+        contract,
+        offersSince: z
+          .number()
+          .int()
+          .optional()
+          .describe("The last OFFER_ROOM seq you saw; window reads only."),
+        offersFull: z
+          .boolean()
+          .optional()
+          .describe("Read OFFER_ROOM's retained JSONL export instead of the tail window."),
+        since: z.number().int().optional().describe("The last deal-room seq you saw; window reads only."),
+        full: z.boolean().optional().describe("Read the deal room's retained JSONL export instead of the tail window."),
       },
     },
     (args) => run(() => h.tclk_read_verified_transcript(args)),
