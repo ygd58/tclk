@@ -15,6 +15,14 @@ All notable changes to this project are documented here. Format follows
 
 ### Added
 
+- `tclk_read_verified_transcript`: reads one room and folds it through
+  `foldTranscript` in a single call, so the authenticated path is also the easy one.
+  Closes the gap #158 identified: `tclk_read_room` alone returns unauthenticated
+  records (`from` self-declared by the frame payload, not cross-checked against the
+  real technocore-verified sender), which a forged frame from an unrelated identity
+  can exploit if a caller reasons about it directly instead of separately chaining
+  `tclk_apply_transcript`. `SPEC.md` §7 now says plainly that a raw read is not an
+  authenticated one.
 - A schema-owned tclk/1 frame field contract, canonical settlement-rail registry and
   intersection-based, order-independent rail matching helpers. Generated decoder fields
   and the normative `SPEC.md` table are checked for drift in CI.

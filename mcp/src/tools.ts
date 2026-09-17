@@ -472,6 +472,55 @@ export function createHandlers(options: HandlerOptions = {}) {
       };
     },
 
+    /**
+     * Read a room and fold it in one call: the safe default for \"what is this
+     * contract\u2019s state\", so the easy path is also the authenticated one. Wires
+     * together two already-tested primitives (`tclk_read_room` + `foldTranscript`)
+     * without touching either \u2014 a forged `from` field, a bad signature, or a wrong
+     * room is rejected by `foldTranscript` exactly as it is for `tclk_apply_transcript`,
+     * and never advances `state`.
+     *
+     * `state` is `null` when no authenticated offer has been folded yet (an empty or
+     * very new room, or one whose only offer-shaped frames were all rejected). That is
+     * a normal read outcome here, not a failure: unlike `tclk_apply_transcript`, which
+     * a caller invokes expecting a contract to already exist, this tool answers \"what,
+     * if anything, has this room authenticated so far\" \u2014 so it reports `state: null`
+     * plus the rejected `steps` rather than throwing.
+     */
+    async tclk_read_verified_transcript(input: { room: string; since?: number; full?: boolean }) {
+      const read = await this.tclk_read_room(input);
+      const folded = foldTranscript(read.records);
+      const open = folded.state;
+      return {
+        room: read.room,
+        source: read.source,
+        count: read.count,
+        lastSeq: read.lastSeq,
+        malformed: "malformed" in read ? read.malformed : [],
+        state:
+          open === null
+            ? null
+            : {
+                status: open.status,
+                contract: open.contract ?? null,
+                offerId: open.offer.id,
+                parties: {
+                  payer: open.payerDid ?? null,
+                  payee: open.payeeDid ?? null,
+                  payerKey: open.payerKey ?? null,
+                  payeeKey: open.payeeKey ?? null,
+                },
+                statement: open.statement ?? null,
+                rail: open.rail ?? null,
+                railRef: open.railRef ?? null,
+                // Deliberately not echoed, same reasoning as tclk_apply_transcript.
+                secretRevealed: open.secret !== undefined,
+              },
+        steps: folded.steps,
+        rejectedCount: folded.steps.filter((step) => !step.ok).length,
+      };
+    },
+
     tclk_whoami() {
       const notes: string[] = [];
       if (signer === null) notes.push("no signing key: set TECHNOCORE_SIGNING_KEY to post signed frames");

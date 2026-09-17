@@ -364,6 +364,27 @@ export function createServer(options: HandlerOptions = {}): McpServer {
   );
 
   server.registerTool(
+    "tclk_read_verified_transcript",
+    {
+      description:
+        "Read a room and fold it in one call \u2014 the authenticated default for \"what is " +
+        "this contract's state\". Runs tclk_read_room then foldTranscript internally: a " +
+        "forged `from` field, a bad signature, or a wrong room is rejected exactly as it " +
+        "is for tclk_apply_transcript and never advances `state`. Prefer this over reading " +
+        "tclk_read_room output directly for any decision that affects lock/receipt/refund " +
+        "handling \u2014 raw records are unauthenticated. `state` is `null` when no " +
+        "authenticated offer has folded yet; that is a normal outcome here, not a failure.",
+      annotations: NETWORK_READS,
+      inputSchema: {
+        room,
+        since: z.number().int().optional().describe("The last seq you saw; window reads only."),
+        full: z.boolean().optional().describe("Read the retained JSONL export instead of the tail window."),
+      },
+    },
+    (args) => run(() => h.tclk_read_verified_transcript(args)),
+  );
+
+  server.registerTool(
     "tclk_whoami",
     {
       description:

@@ -793,6 +793,39 @@ export const TOOLS: readonly ManifestTool[] = [
     }
   },
   {
+    "name": "tclk_read_verified_transcript",
+    "description": "Read a room and fold it in one call — the authenticated default for \"what is this contract's state\". Runs tclk_read_room then foldTranscript internally: a forged `from` field, a bad signature, or a wrong room is rejected exactly as it is for tclk_apply_transcript and never advances `state`. Prefer this over reading tclk_read_room output directly for any decision that affects lock/receipt/refund handling — raw records are unauthenticated. `state` is `null` when no authenticated offer has folded yet; that is a normal outcome here, not a failure.",
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "room": {
+          "type": "string",
+          "description": "A technocore room name, /^[a-z0-9][a-z0-9_-]{0,47}$/."
+        },
+        "since": {
+          "type": "integer",
+          "description": "The last seq you saw; window reads only."
+        },
+        "full": {
+          "type": "boolean",
+          "description": "Read the retained JSONL export instead of the tail window."
+        }
+      },
+      "required": [
+        "room"
+      ],
+      "additionalProperties": false,
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "annotations": {
+      "readOnlyHint": true,
+      "openWorldHint": true
+    },
+    "execution": {
+      "taskSupport": "forbidden"
+    }
+  },
+  {
     "name": "tclk_verify_secret",
     "description": "Check a revealed secret against a statement for either lock kind.",
     "inputSchema": {
